@@ -2,11 +2,12 @@
 
 ## Ownership
 
-- `App/`: app entry point, lifecycle delegate, `AppPresentation` status-item/popover/window ownership, and shared `AppModel` state.
+- `App/`: app entry point, lifecycle delegate, `AppPresentation` status-item/popover/window ownership, shared `AppModel` state, and the shared refresh coordinator.
 - `Features/Widget/`: panel, account card, and quota-window row. Presentation only; no server mutation.
 - `Models/`: typed credential, provider, and quota snapshots/responses.
 - `Services/ManagementAPI/`: URL validation, authenticated URLSession requests, and status-code errors.
 - `Services/QuotaProbe/`: provider-specific quota probes for credentials the instance exposes without a quota plugin. Each probe asks the instance to forward one provider request with that credential's token, then maps the provider's own response into the shared quota shape.
+- `Services/Atoll/`: pinned Atoll SDK transport and opt-in integration ownership, safe dashboard serialization, pagination, and compact quota selection. The SDK transport uses bounded XPC requests; the dashboard payload contains only normalized display values, not credentials or instance connection details.
 - `Services/Security/`: Security-framework Keychain persistence.
 - `AppInfo.plist`: ATS allows arbitrary HTTP transport; Settings requires explicit confirmation before testing or saving non-private HTTP endpoints.
 
@@ -16,13 +17,15 @@ The Xcode project uses a file-system synchronized source group. New Swift files 
 
 Settings drafts are local view state. Test Connection validates the current URL/key draft and requests credential inventory without persisting either value. HTTP hosts outside loopback and IPv4 `100.0.0.0/8` require explicit confirmation before test or save because HTTP exposes the management key and traffic. Save validates the URL/key, writes Keychain first, then commits the URL to UserDefaults, increments the configuration revision, clears data, and resets authentication pause.
 
-Refresh captures a configuration revision and prevents concurrent refreshes. It reads credential inventory, fetches quotas with at most six in-flight account requests, restores credential order before provider grouping, then publishes only if the configuration revision is unchanged. Cancellation does not publish partial data. Each account's quota comes from its published quota plugin when the instance has one for that provider, otherwise from a registered provider probe; a provider with neither stays explicitly unavailable rather than being inferred from request counters.
+Refresh captures a configuration revision and prevents concurrent refreshes. The panel and enabled Atoll integration lease one shared scheduler, so either surface keeps one refresh loop active. It reads credential inventory, fetches quotas with at most six in-flight account requests, restores credential order before provider grouping, then publishes only if the configuration revision is unchanged. Cancellation does not publish partial data. Each account's quota comes from its published quota plugin when the instance has one for that provider, otherwise from a registered provider probe; a provider with neither stays explicitly unavailable rather than being inferred from request counters.
 
 A top-level connection failure leaves the prior snapshot intact and exposes an error. Quota failures belong to their account. Authentication failures abort the refresh and pause later calls to reduce the risk of the API's failure-based IP ban.
 
+Atoll is opt-in and stores only its enablement preference and selected provider/account/window key. Host authorization remains owned by Atoll. The integration checks host availability and authorization, then serializes the model snapshot into bounded pages and a compact live activity. Page changes do not request quotas. XPC cancellation, timeout, interruption, and invalidation complete pending requests. Host failures are surfaced in the Atoll settings status and do not overwrite the management snapshot.
+
 ## UI boundaries
 
-`AppPresentation` owns a transient menu-bar popover and a separately recoverable Settings window. It creates a fresh SwiftUI panel hierarchy for each opening and releases it on close, bounding its 60-second polling task to visible presentation. The panel opens at least two thirds of the screen height and dismisses when the user clicks outside it. Its header is a single row: title, connection-status chip, refresh age, and refresh action. Account limits remain separate because their reset times and plans can differ.
+`AppPresentation` owns a transient menu-bar popover and a separately recoverable Settings window. It creates a fresh SwiftUI panel hierarchy for each opening and releases it on close; its polling lease is shared with Atoll's background lease. The panel opens at least two thirds of the screen height and dismisses when the user clicks outside it. Its header is a single row: title, connection-status chip, refresh age, and refresh action. Account limits remain separate because their reset times and plans can differ.
 
 SwiftUI uses shared `@Observable` main-actor state through environment injection, with `@Bindable` for the widget toggle. Keys never belong in UserDefaults, fixture data never belongs in the production refresh path, and view bodies must not contain transport or quota aggregation logic.
 

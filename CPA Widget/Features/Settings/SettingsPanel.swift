@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsPanel: View {
     @Environment(AppModel.self) private var model
+    @Environment(AtollIntegration.self) private var atoll
     let close: () -> Void
     @State private var instanceURL = ""
     @State private var key = ""
@@ -17,6 +18,7 @@ struct SettingsPanel: View {
     }
     var body: some View {
         @Bindable var model = model
+        @Bindable var atoll = atoll
         VStack(alignment: .leading, spacing: 16) {
             Label("CPA Widget", systemImage: "server.rack")
                 .font(.title2.bold())
@@ -38,6 +40,21 @@ struct SettingsPanel: View {
                 Section("Menu bar") {
                     Toggle("Enable status widget", isOn: $model.widgetEnabled)
                     Text("When disabled, reopen CPA Widget from Finder to access Settings and re-enable the icon.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Atoll") {
+                    Toggle("Show quotas in Atoll", isOn: Binding(get: { atoll.enabled }, set: { atoll.setEnabled($0) }))
+                    Text(atoll.statusMessage).font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button("Connect / Show in Atoll", action: atoll.beginConnect)
+                            .disabled(atoll.isConnecting || !atoll.enabled)
+                        Button("Open Atoll", action: atoll.openAtoll)
+                    }
+                    Picker("Compact summary", selection: Binding(get: { atoll.summarySelection }, set: { atoll.selectSummary($0) })) {
+                        Text("Automatic").tag(Optional<AtollSummarySelection>.none)
+                        ForEach(atoll.summaryOptions) { entry in Text(entry.label).tag(Optional(entry.selection)) }
+                    }
+                    Text("Background refresh continues while Atoll is enabled. Account labels are shared with Atoll. Enable Extensions, notch experiences/tabs, live activities, and Allow interactive web content in Atoll Settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Provider metrics") {

@@ -8,12 +8,16 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
     private static let settingsContentSize = NSSize(width: 520, height: 660)
 
     private let model: AppModel
+    private let refreshCoordinator: AppRefreshCoordinator
+    private let atoll: AtollIntegration
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var settingsController: NSWindowController?
 
-    init(model: AppModel) {
+    init(model: AppModel, refreshCoordinator: AppRefreshCoordinator, atoll: AtollIntegration) {
         self.model = model
+        self.refreshCoordinator = refreshCoordinator
+        self.atoll = atoll
     }
 
     func start() {
@@ -61,7 +65,7 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
         let screen = button.window?.screen ?? NSScreen.main
         let usableHeight = screen?.visibleFrame.height ?? 800
         let panelHeight = min((screen?.frame.height ?? 900) * (2.0 / 3.0), usableHeight - 20)
-        panel.contentViewController = NSHostingController(rootView: WidgetPanel(showSettings: { [weak self] in self?.showSettings() }, panelHeight: panelHeight).environment(model))
+        panel.contentViewController = NSHostingController(rootView: WidgetPanel(showSettings: { [weak self] in self?.showSettings() }, panelHeight: panelHeight).environment(model).environment(refreshCoordinator))
         popover = panel
         panel.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
@@ -77,7 +81,7 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.settingsContentSize), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = "CPA Widget Settings"
             window.isReleasedWhenClosed = false
-            window.contentViewController = NSHostingController(rootView: SettingsPanel(close: { [weak self] in self?.hideSettings() }).environment(model))
+            window.contentViewController = NSHostingController(rootView: SettingsPanel(close: { [weak self] in self?.hideSettings() }).environment(model).environment(atoll))
             settingsController = NSWindowController(window: window)
         }
         guard let window = settingsController?.window else { return }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WidgetPanel: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppRefreshCoordinator.self) private var refreshCoordinator
     let showSettings: () -> Void
     let panelHeight: CGFloat
 
@@ -76,15 +77,8 @@ struct WidgetPanel: View {
         }
         .padding(18)
         .frame(width: 410, height: panelHeight)
-        .task { await pollWhileVisible() }
-    }
-
-    private func pollWhileVisible() async {
-        while !Task.isCancelled {
-            await model.refresh()
-            do { try await Task.sleep(for: .seconds(60)) }
-            catch { return }
-        }
+        .onAppear { refreshCoordinator.setActive(.panel, true) }
+        .onDisappear { refreshCoordinator.setActive(.panel, false) }
     }
 
     private func refresh() { Task { await model.refresh() } }

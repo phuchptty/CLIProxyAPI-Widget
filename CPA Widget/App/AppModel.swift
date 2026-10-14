@@ -13,7 +13,7 @@ final class AppModel {
     private(set) var errorMessage: String?
     private(set) var lastUpdated: Date?
     private var authenticationPaused = false
-    private var revision = 0
+    private(set) var settingsRevision = 0
     private let defaults: UserDefaults
     private let keychain = KeychainStore()
 
@@ -41,7 +41,7 @@ final class AppModel {
         try keychain.save(key.trimmingCharacters(in: .whitespacesAndNewlines))
         self.instanceURL = url.absoluteString
         defaults.set(self.instanceURL, forKey: "instanceURL")
-        revision += 1
+        settingsRevision += 1
         authenticationPaused = false
         providers = []
         lastUpdated = nil
@@ -51,7 +51,7 @@ final class AppModel {
     func refresh() async {
         guard !isRefreshing, !authenticationPaused else { return }
         isRefreshing = true
-        let currentRevision = revision
+        let currentRevision = settingsRevision
         defer { isRefreshing = false }
         do {
             let key = try loadKey()
@@ -93,7 +93,7 @@ final class AppModel {
                 }.map(\.1)
             }
             try Task.checkCancellation()
-            guard revision == currentRevision else { return }
+            guard settingsRevision == currentRevision else { return }
             let grouped = Dictionary(grouping: indexedAccounts, by: { $0.credential.provider })
             providers = grouped.keys.sorted().map { ProviderSnapshot(id: $0, accounts: grouped[$0]!) }
             lastUpdated = .now
@@ -101,7 +101,7 @@ final class AppModel {
         } catch is CancellationError {
             // Closing the panel cancels its refresh without replacing the last snapshot.
         } catch {
-            guard revision == currentRevision else { return }
+            guard settingsRevision == currentRevision else { return }
             if let managementError = error as? ManagementError, managementError.stopsAuthentication {
                 authenticationPaused = true
             }

@@ -1,6 +1,6 @@
 # CPA Widget
 
-Native macOS menu-bar status app for a single CLIProxyAPI instance. AppKit's retained `AppPresentation` owns the status item, transient popover, and recoverable Settings window; SwiftUI supplies both surfaces. No external frameworks.
+Native macOS menu-bar status app for a single CLIProxyAPI instance. AppKit's retained `AppPresentation` owns the status item, transient popover, and recoverable Settings window; SwiftUI supplies both surfaces. The opt-in Atoll integration publishes a notch dashboard and compact live-activity summary using the pinned AtollExtensionKit SDK.
 
 ## Requirements and behavior
 
@@ -14,7 +14,7 @@ Native macOS menu-bar status app for a single CLIProxyAPI instance. AppKit's ret
 - Usage means `1 - remainingFraction`; values are bounded to 0–100%. Missing values are unavailable, never interpreted as zero use. Reset dates are displayed in local time.
 - Each quota window is drawn as a ring that fills with the *remaining* quota and prints that percentage, so a small ring always means a nearly exhausted window. The ring is red below 30% left, orange below 70%, and green otherwise; the accessibility value states remaining and used together.
 - Do not average quotas across accounts or manufacture limits from request counts.
-- Refresh on panel task startup, then every 60 seconds while its task is active; manual refresh is available. Settings can test the current URL/key draft before saving.
+- The menu-bar panel and enabled Atoll integration share one 60-second refresh scheduler; Atoll remains refreshed while the panel is closed.
 - Preserve the last successful snapshot after connection failures and label it stale. Individual quota failures do not hide other accounts.
 - Stop subsequent automatic calls after HTTP 401/403 until settings are saved. The server can ban an IP after five consecutive authentication failures.
 
@@ -26,9 +26,11 @@ Native macOS menu-bar status app for a single CLIProxyAPI instance. AppKit's ret
 4. Choose **Test Connection** to test the current URL/key draft without saving it.
 5. Choose **Save** to store the URL and key. Saving does not run a connection test.
 6. Choose **Close**, or the window's own close control, to dismiss Settings. The process keeps running; reopening the app from Finder brings the same window back, centered.
-7. Enable or disable the status widget. Disabling removes its menu-bar icon, not the process or Settings window. Reopen the already-running app from Finder to recover Settings after closing it.
+7. Enable or disable the status widget. Disabling removes its menu-bar icon, not the process or Settings window. Reopen CPA Widget from Finder to recover Settings after closing it.
+8. Enable **Show quotas in Atoll** to authorize CPA Widget in Atoll. Atoll must be running. In Atoll Settings → Extensions, enable extensions, notch experiences/tabs, live activities, and **Allow interactive web content**. The dashboard is read-only and the app never changes Atoll settings. The compact summary picker selects one account/window; its choice is stored without saving quota data.
+9. Atoll authorization is checked again at app launch without prompting. Use **Connect / Show in Atoll** to authorize or resume after dismissal. Disabling the integration removes both Atoll surfaces and stops its refresh lease.
 
-The instance URL and widget preference are stored in UserDefaults. The active management key is stored in Keychain, device-only and available when unlocked. There is one active instance; changing it replaces the key and clears the previous snapshot.
+The instance URL and widget preference are stored in UserDefaults. The active management key is stored in Keychain, device-only and available when unlocked. The Atoll preference and compact account/window key are also stored in UserDefaults; Atoll authorization, quota snapshots, keys, tokens, and rendered HTML are not persisted. There is one active instance; changing it replaces the key and clears the previous snapshot.
 
 HTTPS is recommended. HTTP is accepted without confirmation for `localhost`, loopback, and IPv4 addresses in `100.0.0.0/8` (including Tailscale/NetBird addresses). Other HTTP hosts require explicit confirmation before testing or saving. HTTP sends the management key and traffic unencrypted; anyone on the network path may read or alter them. Use HTTP only on trusted networks. URLs containing embedded credentials, query strings, fragments, or unrelated base paths are rejected. Remote server management must be enabled. Home mode does not expose the management API.
 
@@ -46,22 +48,31 @@ xcodebuild -project 'CPA Widget.xcodeproj' -scheme 'CPA Widget' \
 open '/tmp/cpa-widget-build/Build/Products/Debug/CPA Widget.app'
 ```
 
-Normal signed builds enable app sandboxing, outgoing network connections, and the hardened runtime. `LSUIElement` makes this a menu-bar utility rather than a Dock app. `AppInfo.plist` permits arbitrary HTTP at the ATS layer so confirmed HTTP endpoints work; the Settings flow warns before testing or saving non-private HTTP hosts. This broad exception increases transport risk, so HTTPS remains recommended.
+Normal signed builds enable app sandboxing, outgoing network connections, the hardened runtime, and the narrowly scoped Atoll XPC mach-lookup exception. `LSUIElement` makes this a menu-bar utility rather than a Dock app. `AppInfo.plist` permits arbitrary HTTP at the ATS layer so confirmed HTTP endpoints work; the Settings flow warns before testing or saving non-private HTTP hosts. This broad exception increases transport risk, so HTTPS remains recommended.
 
 ## Verification record
 
+Existing CLIProxyAPI verification predating the Atoll integration:
+
 - The signed Debug app plist sets `NSAllowsArbitraryLoads=true` and omits `NSAllowsLocalNetworking`; on macOS, the latter would cause `NSAllowsArbitraryLoads` to be ignored.
-- Signed Debug build succeeded with app sandboxing and `com.apple.security.network.client` enabled.
-- An isolated signed sandbox probe compiled from the production `AppModel`/`ManagementClient` sources completed `testConnection` over HTTP to the non-loopback LAN fixture `192.168.10.4`. It used a temporary in-memory Keychain adapter and a fixture-only key; no app Keychain value was changed.
-- URL policy smoke checks passed for HTTPS, loopback, the full IPv4 `100.0.0.0/8`, and warning-required other HTTP hosts. The Settings dialog itself and the shipped app's UI-driven confirmation path were not exercised interactively.
-- The eight-account loopback fixture also verified stable ordering, 5h/Weekly windows, unsupported quota isolation, maximum six active requests, 401 snapshot retention, and pause of subsequent refreshes.
-- The panel was opened from the status item against a loopback fixture: the header rendered on one row with a green "Connected" chip, the provider list scrolled inside a panel sized 786 pt against a 1169 pt screen (two thirds), and clicking outside the panel closed it. The stale-snapshot chip rendered orange in the same position. The fixture instance URL was restored afterwards and no Keychain value was read or written.
-- A probe fixture served five credentials and drove the production `AppModel.refresh()` path. Verified: Codex mapped `used_percent` 28/59 into `5h`/`Weekly` windows with remaining fractions 0.72/0.41 and a computed reset time plus the `plus` plan; Antigravity collapsed three models into two windows, tightest first, with the shared-limit window labelled `2 models` and its model ids listed; a credential with a published plugin still used the plugin route and produced zero forwarded requests; a Codex credential without `chatgpt_account_id` reported the missing metadata; a provider with neither source reported quota unavailable. Exactly two forwarded requests were recorded, both carrying `Authorization: Bearer $TOKEN$` and the credential's `auth_index`.
-- Earlier render attempts were inconclusive: `NSHostingView`/`ImageRenderer` produced the quota tracks but no text or blank scroll content, and desktop capture returned black frames while the main display was asleep. The on-screen window capture below replaced both.
-- A routing fixture exercised display filtering and order: a credential with `disabled: true` and the highest priority and weight was absent from the panel and received no quota request, and the remaining Codex accounts published as priority 9 first, then the two priority 5 / weight 9 accounts in inventory order, then the priority 5 / weight 1 account. The same render showed the two-column grid, stacked provider categories, and ring colours at 12% and 15% red, 45% and 52% orange, and 85% and 90% green. This used an on-screen window rendered from the production views and captured with `screencapture`; off-screen hosting rendered blank scroll content.
-- Cards in one grid row were verified to end at the same height: a fixture paired a two-window account with a one-window account, and the shorter card's background stretched to the taller card's height. Off-screen hosting rendered blank scroll content, so this used the same on-screen window capture.
-- The Settings window was verified centered and dismissible on a 1800x1169 pt display with a visible `(0, 78, 1800, 1052)` usable area: it opened at `(640, 219, 520, 692)`, whose centre `(900, 604)` equals the usable area's centre; pressing its **Close** button ordered it out (`onscreen=false`) and a Finder reopen restored the same window at the same centered frame. The same run captured the window: Close on the left, Save on the right of one row.
-- In-app logging found the cause of the earlier off-centre placement: the SwiftUI hosting controller leaves the window at `0 x 32` until its first layout pass, so centring had to move to the next run-loop turn after the size settles.
-- Real-provider quotas and Keychain behavior remain unverified.
+- An isolated signed sandbox probe compiled from production `AppModel`/`ManagementClient` sources completed `testConnection` over HTTP to the non-loopback LAN fixture `192.168.10.4`, using a temporary in-memory Keychain adapter and fixture-only key; no app Keychain value was changed.
+- URL policy smoke checks covered HTTPS, loopback, IPv4 `100.0.0.0/8`, and warning-required other HTTP hosts. The Settings dialog and shipped app UI confirmation path were not exercised.
+- An eight-account loopback fixture verified stable ordering, 5h/Weekly windows, unsupported quota isolation, six-account concurrency, 401 snapshot retention, and pausing subsequent refreshes. Separate fixture runs verified Codex/Antigravity probe mappings, plugin precedence, credential metadata requirements, and unavailable quota behavior.
+- The panel was opened from the status item against a loopback fixture. Header layout, two-thirds-height scrolling panel, outside-click dismissal, stale snapshot status, disabled credential filtering, routing order, two-column cards, and threshold ring colours were checked in on-screen captures.
+- A Settings window was verified centered and dismissible on a 1800×1169 pt display; Finder reopen restored the same centered frame. The Close and Save buttons remained on one row.
+- Real-provider quotas and shipped app Keychain behavior remain unverified.
+
+Atoll integration verification:
+
+- AtollExtensionKit is pinned at revision `23d843ef1b715bb0c2b6debca8399ab9cee306d3`.
+- The unsigned Debug build succeeded after adding the Atoll transport, shared scheduler, Settings lifecycle, dashboard, and compact summary. The final build command used the selected Xcode at `/Applications/Xcode.app/Contents/Developer` and `/tmp/cpa-widget-atoll-build`.
+- `xcodebuild -list` reports the `CPA Widget` target and scheme after restoring the target name and adding the package reference to the PBXProject.
+- The signed Debug build succeeded with the configured Development Team `832V4PV6C6`, using `/tmp/cpa-widget-atoll-signed`. `codesign --verify --deep --strict` succeeded. The signed entitlements retain app sandboxing and outgoing network access; the temporary mach-lookup array contains exactly `com.ebullioscopic.Atoll.xpc`.
+- The installed host metadata reports bundle identifier `com.Ebullioscopic.Atoll`, version `2.3.3`. The signed app process launched. No Atoll preference, authorization, management key, or Keychain value was changed.
+- A temporary standalone descriptor/dashboard fixture exercised eight accounts and 24 windows across six pages. Assertions passed for descriptor validity and the 20,000-byte page cap, full-window retention, HTML escaping, 0/29/30/69/70/100% threshold colours, unavailable quotas, stale banner, no-account state, compact-summary unavailable/stale handling, and omission of arbitrary account errors/auth metadata. It did not exercise `AppModel.refresh()`, disabled credential filtering, XPC transport, or Atoll rendering.
+- A temporary anonymous-listener XPC harness could not complete even `checkAuthorization()`; the transport returned `disconnected` before listener acceptance. Cancellation and invalidation behavior therefore remain unverified.
+- Unsigned and signed builds passed after restoring the `WidgetPanel` 410-point width and computed panel height. `WidgetPanel` source inspection confirms the `.frame(width: 410, height: panelHeight)` modifier is restored. No interactive desktop capture or click inspection was obtained.
+- Atoll authorization/XPC/rendering, menu-bar interaction, extended refresh timing, signed sandbox XPC access, and light/dark/reduced-motion rendering remain unverified. Atoll's interactive web-content permission and Extensions configuration were not changed.
+- The project file's native target has a filesystem synchronized group; Xcode's successful builds compiled all new Swift files.
 
 See [API.md](API.md) for endpoint contracts and [Architecture.md](Architecture.md) for ownership and change rules.

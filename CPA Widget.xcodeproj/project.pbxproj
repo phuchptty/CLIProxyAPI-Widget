@@ -18,14 +18,34 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXBuildFile section */
+		A71000000000000000000001 /* AtollExtensionKit in Frameworks */ = {isa = PBXBuildFile; productRef = A71000000000000000000004 /* AtollExtensionKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		94BAA051307E7BF40094B423 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				A71000000000000000000001 /* AtollExtensionKit in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		A71000000000000000000002 /* XCRemoteSwiftPackageReference "AtollExtensionKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Ebullioscopic/AtollExtensionKit.git";
+			requirement = { kind = revision; revision = 23d843ef1b715bb0c2b6debca8399ab9cee306d3; };
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A71000000000000000000004 /* AtollExtensionKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A71000000000000000000002 /* XCRemoteSwiftPackageReference "AtollExtensionKit" */;
+			productName = AtollExtensionKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 /* Begin PBXGroup section */
 		94BAA04B307E7BF40094B423 = {
 			isa = PBXGroup;
@@ -60,6 +80,9 @@
 				94BAA056307E7BF40094B423 /* CPA Widget */,
 			);
 			name = "CPA Widget";
+			packageProductDependencies = (
+				A71000000000000000000004 /* AtollExtensionKit */,
+			);
 			productName = "CPA Widget";
 			productReference = 94BAA054307E7BF40094B423 /* CPA Widget.app */;
 			productType = "com.apple.product-type.application";
@@ -91,6 +114,9 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 94BAA055307E7BF40094B423 /* Products */;
 			projectDirPath = "";
+			packageReferences = (
+				A71000000000000000000002 /* XCRemoteSwiftPackageReference "AtollExtensionKit" */,
+			);
 			projectRoot = "";
 			targets = (
 				94BAA053307E7BF40094B423 /* CPA Widget */,
@@ -247,6 +273,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = CPAWidget.entitlements;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -285,6 +312,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = CPAWidget.entitlements;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
