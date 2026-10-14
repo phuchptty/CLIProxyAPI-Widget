@@ -10,6 +10,8 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
     private let model: AppModel
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
+    private var outsideClickMonitor: Any?
+    private var resignActiveObserver: NSObjectProtocol?
     private var settingsController: NSWindowController?
 
     init(model: AppModel) {
@@ -46,6 +48,7 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
             item.button?.action = #selector(togglePopover(_:))
             statusItem = item
         } else {
+            removeOutsideClickMonitor()
             if let popover, popover.isShown { popover.performClose(nil) }
             if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
             statusItem = nil
@@ -67,10 +70,37 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
         panel.contentViewController = NSHostingController(rootView: WidgetPanel(showSettings: { [weak self] in self?.showSettings() }, panelHeight: panelHeight).environment(model))
         popover = panel
         panel.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        installOutsideClickMonitor()
+        resignActiveObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+            let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard activated?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+            MainActor.assumeIsolated { self?.popover?.performClose(nil) }
+        }
+    }
+
+    /// An accessory app's transient popover does not reliably dismiss on outside clicks, so a
+    /// global mouse-down monitor closes it. Clicks in this app's own windows and the status item are
+    /// not delivered to global monitors, so the status-item toggle keeps working through its own action.
+    private func installOutsideClickMonitor() {
+        removeOutsideClickMonitor()
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let popover = self.popover, popover.isShown else { return }
+                popover.performClose(nil)
+            }
+        }
+    }
+
+    private func removeOutsideClickMonitor() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        outsideClickMonitor = nil
+        if let resignActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(resignActiveObserver) }
+        resignActiveObserver = nil
     }
 
     func popoverDidClose(_ notification: Notification) {
         guard let popover = notification.object as? NSPopover else { return }
+        removeOutsideClickMonitor()
         popover.contentViewController = NSHostingController(rootView: EmptyView())
         self.popover = nil
     }
