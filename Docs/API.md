@@ -10,9 +10,30 @@ Base: `<instance>/v8/management`. Every request carries `Authorization: Bearer <
 | --- | --- |
 | `GET /credentials` | Provider/account inventory and available quota plugin metadata |
 | `GET /plugins/:id/quota?auth_index=...` | Normalized quotas for one account through an installed quota plugin |
+| `GET /observability/logs?limit=N` | Tail of the instance's file log, shown as the request-history tab |
 | `POST /requests/api-call` | One forwarded provider request used by the built-in quota probes |
 
 These are read operations. The app does not change server configuration, reset quotas, refresh OAuth tokens, download credentials, or drain `/observability/usage/queue`. That queue is destructive and unsuitable for a passive status widget.
+
+## Request history
+
+The Requests tab reads `GET /observability/logs?limit=500` and keeps the proxied API requests out of the returned tail, newest first (at most 200 entries). Nothing is popped, truncated, or reconfigured, so repeated reads leave the instance's log untouched. `/observability/usage/queue` stays unused for the reason above; `/observability/usage/api-keys` only holds in-memory success/failure counters, not a per-request history.
+
+The instance writes one line per request as `[timestamp] [request-id] [level] [caller] <message>` (`LogFormatter` in `internal/logging/global_logger.go`), and a Gin access line's message is `200 |    1.23s | 127.0.0.1 | POST    "/v1/chat/completions"` (`GinLogrusLogger` in `internal/logging/gin_logger.go`). The app parses those four access-log fields, keeps the method, path (query string removed), status, latency, client IP, request ID, and any trailing error message, and treats a line as history only when:
+
+- the leading brackets are `[timestamp] [8-char id or --------] [level]` with an optional `[file.go:line]` caller, and
+- the path starts with one of the paths the instance itself generates a request ID for — `/v1`, `/v1beta`, `/openai/v1`, `/backend-api/codex` (`aiAPIPrefixes` in `gin_logger.go`).
+
+Management, health, and ordinary application lines are therefore not request history; the panel's own calls never appear in the tab.
+
+The timestamp is shown exactly as the instance wrote it. The line carries no time zone, so the app does not guess one; the tab's own age indicator reports when the history was last read.
+
+| Result | Meaning |
+| --- | --- |
+| `400` | `observability.logs.logging-to-file` is off, the only documented 400 for this route. The tab says so and the app stops asking until settings are saved. |
+| `401`/`403` | Same authentication pause as the rest of the app. |
+| Empty `lines` | File logging is on but the log holds no proxied request yet; the tab stays empty rather than substituting anything. |
+
 
 ## Credential inventory
 
@@ -53,7 +74,7 @@ Schema source: [sdk/pluginapi/types.go](https://github.com/router-for-me/CLIProx
 
 This is a schema illustration, not live usage. The app consumes the normalized server's camelCase output. Optional arrays and fields can be omitted. Percent used is `1 - clamp(remainingFraction, 0, 1)`. Neither missing values nor absent windows are fabricated. Date parsing supports ISO 8601 with and without fractional seconds; unparseable reset strings are shown literally.
 
-Summary values support numeric/unit and currency rendering. Subscription plan/tier names are shown when present. Server clock-offset metadata is not used because the UI displays absolute reset timestamps rather than a countdown.
+Summary values support numeric/unit and currency rendering. Subscription plan/tier names are shown when present. Server clock-offset metadata is not used: the row shows a reset ETA derived from the device clock ("in 2 hours"), with the absolute local time as its help text.
 
 ## Provider quota probes
 

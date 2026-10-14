@@ -18,11 +18,13 @@ Settings drafts are local view state. Test Connection validates the current URL/
 
 Refresh captures a configuration revision and prevents concurrent refreshes. It reads credential inventory, fetches quotas with at most six in-flight account requests, restores credential order before provider grouping, then publishes only if the configuration revision is unchanged. Cancellation does not publish partial data. Each account's quota comes from its published quota plugin when the instance has one for that provider, otherwise from a registered provider probe; a provider with neither stays explicitly unavailable rather than being inferred from request counters.
 
+The request-history read is a second, independent refresh: it captures the same configuration revision, reads the tail of the instance's file log, maps it through `Models/RequestLogEntry`, and publishes only if the revision is unchanged. It shares the authentication pause, so a 401/403 stops it together with the quota refresh, and an instance that reports no file logging stops it until settings are saved.
+
 A top-level connection failure leaves the prior snapshot intact and exposes an error. Quota failures belong to their account. Authentication failures abort the refresh and pause later calls to reduce the risk of the API's failure-based IP ban.
 
 ## UI boundaries
 
-`AppPresentation` owns a transient menu-bar popover and a separately recoverable Settings window. It creates a fresh SwiftUI panel hierarchy for each opening and releases it on close, bounding its 60-second polling task to visible presentation. The panel opens at least two thirds of the screen height and dismisses when the user clicks outside it. Its header is a single row: title, connection-status chip, refresh age, and refresh action. Account limits remain separate because their reset times and plans can differ.
+`AppPresentation` owns a transient menu-bar popover and a separately recoverable Settings window. It creates a fresh SwiftUI panel hierarchy for each opening and releases it on close, bounding its 60-second polling task to visible presentation. The panel opens at least two thirds of the screen height and dismisses when the user clicks outside it. Its header is a single row: title, connection-status chip, refresh age, and refresh action. A segmented picker splits the panel body into the quota tab and the request-history tab; each tab owns its scroll view and its own refresh state, and the history tab's polling task lives with its view, so switching tabs stops the reads it no longer needs. The header's refresh action refreshes both. Account limits remain separate because their reset times and plans can differ.
 
 SwiftUI uses shared `@Observable` main-actor state through environment injection, with `@Bindable` for the widget toggle. Keys never belong in UserDefaults, fixture data never belongs in the production refresh path, and view bodies must not contain transport or quota aggregation logic.
 

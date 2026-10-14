@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WidgetPanel: View {
     @Environment(AppModel.self) private var model
+    @State private var tab: WidgetTab = .quotas
     let showSettings: () -> Void
     let panelHeight: CGFloat
 
@@ -34,38 +35,19 @@ struct WidgetPanel: View {
                 }
                 Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
                     .labelStyle(.iconOnly).disabled(model.isRefreshing)
-                    .help("Refresh all provider quotas")
+                    .help("Refresh provider quotas and request history")
             }
             if let error = model.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            WidgetTabPicker(selection: $tab)
             Divider()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    if model.providers.isEmpty {
-                        ContentUnavailableView("No provider data", systemImage: "network", description: Text("Configure an instance in Settings. Connected instances with no credentials have no providers to display."))
-                    }
-                    ForEach(model.providers) { provider in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text(provider.id.capitalized).font(.headline)
-                                Spacer()
-                                Text("\(provider.accounts.count) accounts").font(.caption).foregroundStyle(.secondary)
-                            }
-                            // Categories stay stacked; accounts pair up two per row.
-                            LazyVGrid(columns: Self.accountColumns, alignment: .leading, spacing: 10) {
-                                ForEach(provider.accounts) { account in
-                                    AccountCard(account: account)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.trailing, 4)
+            switch tab {
+            case .quotas: quotaList
+            case .requests: RequestHistoryView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             HStack {
                 Button("Settings…", systemImage: "gearshape", action: { showSettings() })
@@ -79,6 +61,33 @@ struct WidgetPanel: View {
         .task { await pollWhileVisible() }
     }
 
+    private var quotaList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                if model.providers.isEmpty {
+                    ContentUnavailableView("No provider data", systemImage: "network", description: Text("Configure an instance in Settings. Connected instances with no credentials have no providers to display."))
+                }
+                ForEach(model.providers) { provider in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(provider.id.capitalized).font(.headline)
+                            Spacer()
+                            Text("\(provider.accounts.count) accounts").font(.caption).foregroundStyle(.secondary)
+                        }
+                        // Categories stay stacked; accounts pair up two per row.
+                        LazyVGrid(columns: Self.accountColumns, alignment: .leading, spacing: 10) {
+                            ForEach(provider.accounts) { account in
+                                AccountCard(account: account)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.trailing, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private func pollWhileVisible() async {
         while !Task.isCancelled {
             await model.refresh()
@@ -87,6 +96,10 @@ struct WidgetPanel: View {
         }
     }
 
-    private func refresh() { Task { await model.refresh() } }
+    private func refresh() {
+        Task { await model.refreshRequestHistory() }
+        Task { await model.refresh() }
+    }
+
     private func quit() { NSApplication.shared.terminate(nil) }
 }

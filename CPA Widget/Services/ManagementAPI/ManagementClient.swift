@@ -43,6 +43,26 @@ struct ManagementClient: Sendable {
         return try await get(["plugins", plugin, "quota"], query: [URLQueryItem(name: "auth_index", value: index)])
     }
 
+    /// Reads the tail of the instance's file log. This reads the log files it rotates; it never
+    /// drains the destructive usage queue.
+    func logs(limit: Int) async throws -> [String] {
+        do {
+            let response: LogsResponse = try await get(["observability", "logs"], query: [URLQueryItem(name: "limit", value: String(limit))])
+            return response.lines
+        } catch ManagementError.http(400) {
+            // The only documented 400 here is file logging being switched off; the limit is valid.
+            throw ManagementError.requestLogsUnavailable
+        }
+    }
+
+    /// Downloads the per-request log file for one request ID and returns the model named in its
+    /// `REQUEST BODY` section. Only that section is parsed; headers and the rest of the file are
+    /// dropped. A 404 means the instance kept no file for that request (request logging is off).
+    func requestModel(requestID: String) async throws -> String? {
+        let data = try await perform(path: ["observability", "logs", "requests", requestID], query: [], method: "GET", body: nil)
+        return RequestModel.model(inLogFile: data)
+    }
+
     /// Forwards one request to an upstream provider through the instance, substituting the
     /// credential's access token for the literal `$TOKEN$` header value.
     func apiCall(authIndex: String, method: String, url: String, headers: [String: String], body: String?) async throws -> APICallResult {
@@ -60,6 +80,12 @@ struct ManagementClient: Sendable {
     }
 
     private func send<T: Decodable>(path: [String], query: [URLQueryItem], method: String, body: Data?) async throws -> T {
+        try JSONDecoder().decode(T.self, from: try await perform(path: path, query: query, method: method, body: body))
+    }
+
+    /// Performs an authenticated request and returns its raw body. Non-2xx responses surface only
+    /// their status code: server bodies can contain credentials and are never shown or logged.
+    private func perform(path: [String], query: [URLQueryItem], method: String, body: Data?) async throws -> Data {
         var url = baseURL
         if !url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty {
             // A full management base is accepted; do not append it a second time.
@@ -84,10 +110,8 @@ struct ManagementClient: Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw ManagementError.invalidResponse }
         guard (200..<300).contains(response.statusCode) else {
-            // Never surface arbitrary server bodies: they may contain credentials.
             throw ManagementError.http(response.statusCode)
         }
-        let decoder = JSONDecoder()
-        return try decoder.decode(T.self, from: data)
+        return data
     }
 }

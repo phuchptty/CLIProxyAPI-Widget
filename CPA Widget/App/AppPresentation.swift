@@ -37,7 +37,10 @@ final class AppPresentation: NSObject, NSPopoverDelegate {
         if model.widgetEnabled {
             guard statusItem == nil else { return }
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            item.button?.image = NSImage(systemSymbolName: "server.rack", accessibilityDescription: "CLI Proxy API status")
+            let icon = NSImage(named: "MenuBarIcon")
+            icon?.isTemplate = true
+            item.button?.image = icon
+            item.button?.setAccessibilityLabel("CLI Proxy API status")
             item.button?.toolTip = "CLI Proxy API"
             item.button?.target = self
             item.button?.action = #selector(togglePopover(_:))

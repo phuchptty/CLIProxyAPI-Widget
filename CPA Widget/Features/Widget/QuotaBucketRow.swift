@@ -22,9 +22,10 @@ struct QuotaBucketRow: View {
                         .lineLimit(2)
                 }
                 if let reset = bucket.resetTime, !reset.isEmpty {
-                    Text(resetText(reset))
+                    Text(QuotaResetETA.text(for: reset))
                         .font(.caption2).foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .help(QuotaResetETA.help(for: reset))
                 }
             }
             Spacer(minLength: 0)
@@ -37,18 +38,5 @@ struct QuotaBucketRow: View {
     private var accessibilityValue: String {
         guard let remaining = bucket.availableFraction, let used = bucket.usedFraction else { return "Unavailable" }
         return "\(remaining.formatted(.percent)) remaining, \(used.formatted(.percent)) used"
-    }
-
-    private func resetText(_ value: String) -> String {
-        guard let date = resetDate(value) else { return "Reset: \(value)" }
-        return "Resets \(date.formatted(date: .abbreviated, time: .shortened))"
-    }
-
-    private func resetDate(_ value: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value)
     }
 }

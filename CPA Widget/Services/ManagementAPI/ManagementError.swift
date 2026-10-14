@@ -1,7 +1,7 @@
 import Foundation
 
 enum ManagementError: LocalizedError {
-    case invalidURL, invalidResponse, unsupportedQuota, missingKey
+    case invalidURL, invalidResponse, unsupportedQuota, missingKey, requestLogsUnavailable
     case providerMetadata(String), providerHTTP(Int), providerResponse(String)
     case http(Int)
 
@@ -11,6 +11,7 @@ enum ManagementError: LocalizedError {
         case .missingKey: "Enter a management key."
         case .invalidResponse: "The instance returned an invalid response."
         case .unsupportedQuota: "Quota unavailable: this credential has no v8 quota plugin or supported provider probe."
+        case .requestLogsUnavailable: "Request history unavailable: the instance does not write file logs. Enable observability.logs.logging-to-file."
         case .providerMetadata(let field): "Quota unavailable: the instance did not expose this credential's \(field)."
         case .providerHTTP(let code): "The provider returned HTTP \(code) while reading quota."
         case .providerResponse(let reason): "The provider returned an unexpected quota response (\(reason))."
